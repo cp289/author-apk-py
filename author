@@ -33,6 +33,7 @@ class ApkAnalyzer:
         self.dir = apk_file + '.dec'    # extracted APK directory
         self.xml_strings = []           # list of XML resource files
         self.bin_files = []             # list of binary files
+        self.n_grams = []               # Creates an array to store n-grams
 
         verb('__init__', 'Created ApkAnalyzer for %s' % (apk_file))
 
@@ -44,12 +45,24 @@ class ApkAnalyzer:
         with open(strings_xml_path) as xml_file:
             parser = BeautifulSoup(xml_file, features='lxml-xml')
 
-        '''
-        print(parser.resources.descendants)
-        for child in parser.resources.descendants:
-            print(child)
-        '''
-    
+            # Pulls all <string> from strings.xml
+            strings = parser.findAll("string")
+
+            for phrase in strings:
+                phrase = phrase.text.lower()
+                
+                tokens = [token for token in phrase.split(" ") if token != ""]
+
+                # If the string is less than 3 words, it stores the whole string in the array
+                if(len(tokens) < 3):
+                    n_grams = zip(*[tokens[i:] for i in range(len(tokens))])
+                    self.n_grams += n_grams
+                    continue
+                
+                # This creates each 3-gram of a string if it has at least 3 words
+                n_grams = zip(*[tokens[i:] for i in range(3)])
+                self.n_grams += n_grams
+
 
     # Extract/decrypt APK file using `apktool`
     def extract(self):
