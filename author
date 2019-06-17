@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 
+from bs4 import BeautifulSoup
+import os
 import sys
 import subprocess
 
@@ -18,8 +20,7 @@ def error(who, msg, fatal=False, exit_code=-1, pre='error'):
 # Print verbose output
 def verb(who, msg):
 
-    if VERBOSE:
-        print('%s: %s' % (who, msg))
+    if VERBOSE: print('%s: %s' % (who, msg))
 
 
 # Class for analyzing an APK file
@@ -30,16 +31,24 @@ class ApkAnalyzer:
 
         self.file = apk_file            # APK file path
         self.dir = apk_file + '.dec'    # extracted APK directory
-        self.xml_files = []             # list of XML resource files
+        self.xml_strings = []           # list of XML resource files
         self.bin_files = []             # list of binary files
 
         verb('__init__', 'Created ApkAnalyzer for %s' % (apk_file))
 
 
-    # Enumerate files containing XML string data
-    def find_xml_resources(self):
+    # Extract string data from res/values/strings.xml
+    def get_xml_strings(self):
 
-        error('find_xml_resources', 'not implemented yet')
+        strings_xml_path = os.path.join(self.dir, 'res/values/strings.xml')
+        with open(strings_xml_path) as xml_file:
+            parser = BeautifulSoup(xml_file, features='lxml-xml')
+
+        '''
+        print(parser.resources.descendants)
+        for child in parser.resources.descendants:
+            print(child)
+        '''
     
 
     # Extract/decrypt APK file using `apktool`
@@ -68,10 +77,12 @@ class ApkAnalyzer:
         else:
             verb('extract', 'extraction completed successfuly')
 
+
     # Run entire analysis routine
     def run(self):
 
         self.extract()
+        self.get_xml_strings()
 
 
 if __name__ == '__main__':
