@@ -5,6 +5,9 @@
 # For documentation on the DEX file format, see:
 # https://source.android.com/devices/tech/dalvik/dex-format
 #
+# For documentation on the struct module, see:
+# https://docs.python.org/3/library/struct.html
+#
 
 from message import *
 import struct
