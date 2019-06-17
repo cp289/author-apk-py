@@ -1,26 +1,14 @@
 #!/usr/bin/python3
+#
+# author: Takes an APK as an input and constructs features for analysis
+#
 
 from bs4 import BeautifulSoup
+from DexParser import DexParser
+from message import *
 import os
-import sys
+import settings
 import subprocess
-
-
-# Whether output is verbose
-VERBOSE = False
-
-
-# Output an error message and exit if necessary
-def error(who, msg, fatal=False, exit_code=-1, pre='error'):
-
-    print('%s: %s: %s' % (who, pre, msg), file=sys.stderr)
-    if fatal: exit(exit_code)
-
-
-# Print verbose output
-def verb(who, msg):
-
-    if VERBOSE: print('%s: %s' % (who, msg))
 
 
 # Class for analyzing an APK file
@@ -31,9 +19,8 @@ class ApkAnalyzer:
 
         self.file = apk_file            # APK file path
         self.dir = apk_file + '.dec'    # extracted APK directory
-        self.xml_strings = []           # list of XML resource files
-        self.bin_files = []             # list of binary files
         self.n_grams = []               # Creates an array to store n-grams
+        self.dex = None                 # DexParser object
 
         verb('__init__', 'Created ApkAnalyzer for %s' % (apk_file))
 
@@ -65,6 +52,7 @@ class ApkAnalyzer:
 
 
     # Extract/decrypt APK file using `apktool`
+    # TODO detect presence and build paths to important files, e.g. classes.dex
     def extract(self):
 
         # This is the command that extracts the APK file
@@ -96,12 +84,15 @@ class ApkAnalyzer:
 
         self.extract()
         self.get_xml_strings()
+        self.dex = DexParser(os.path.join(self.dir, 'classes.dex'))
 
 
 if __name__ == '__main__':
 
+    import sys
+
     # TODO parse verbosity through argv
-    VERBOSE = True
+    settings.VERBOSE = True
 
     if len(sys.argv) < 2:
         error(sys.argv[0], '%s <apkFileName>' % (sys.argv[0]), True, pre='usage')

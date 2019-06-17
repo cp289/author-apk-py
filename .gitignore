@@ -1,2 +1,6 @@
 *.apk
 *.dec
+
+# Python files
+__pycache__
+
