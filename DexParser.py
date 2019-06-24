@@ -8,6 +8,9 @@
 # For documentation on the struct module, see:
 # https://docs.python.org/3/library/struct.html
 #
+# For documentation on Modified UTF-8 encoding (MUTF-8), see:
+# ?
+#
 
 from message import *
 import struct
@@ -61,10 +64,11 @@ class DexHeader:
         self.data_off, = struct.unpack('I', dex_file.read(4))
 
 
-class DexMapItem:
+# Dex file map item object
+class DexMap:
 
     # Type id definitions
-    type = {
+    type_id = {
             0 : 'header_item',
             1 : 'string_id_item',
             2 : 'type_id_item',
@@ -92,13 +96,74 @@ class DexMapItem:
 
     # Produce nice string formatting of object
     def __repr__(self):
-        return '%s[%d] AT %s' % (DexMapItem.type[self.type], self.size,
+        return '%s[%d] AT %s' % (DexMap.type_id[self.type], self.size,
                 hex(self.offset))
+
+
+# String identifier item object
+class DexStrId:
+
+    def __init__(self, byte_data):
+
+        self.offset, = struct.unpack('I', byte_data)
+
+    # Nice string representation
+    def __repr__(self):
+        return 'string_id_item: %s' % (hex(self.offset))
+
+    # Load corresponding DexStrData object
+    def loadStrData(self, dex_file):
+
+        dex_file.seek(self.offset)  # Go to string_data_item
+
+        self.string_data_item = DexStrData(dex_file)
+
+
+# Type id item object
+class DexTypeId:
+
+    def __init__(self, byte_data, str_data):
+
+        self.descriptor_idx, = struct.unpack('I', byte_data)
+        self.descriptor = str_data[self.descriptor_idx].data
+
+    def __repr__(self):
+        return 'Type: %s' % (self.descriptor)
+
+
+# Object for string_data_item
+class DexStrData:
+
+    def __init__(self, dex_file):
+
+        self.size = DexParser.parseLeb128(dex_file)
+        # TODO convert to Modified UTF-8 encoding? (see documentation above)
+        self.data = dex_file.read(self.size)
+
+    # Nice string representation
+    def __repr__(self):
+        return 'ubyte[%d]: %s' % (self.size, self.data)
+
+
+class DexProtoId:
+
+    def __init__(self, byte_data, str_data, type_data):
+
+        self.shorty_idx, self.return_type_idx, self.parameters_off = struct.unpack('III', byte_data)
+
+        self.shorty_descriptor = str_data[self.shorty_idx].data
+        self.return_type = type_data[self.return_type_idx]
+        # TODO parse list of parameter types
+
+    # Nice string representation
+    def __repr__(self):
+        return '%s -> %s' % (self.shorty_descriptor, self.return_type)
 
 
 class DexParser:
 
     def __init__(self, dex_file_path):
+
         self.FILE_PATH = dex_file_path
 
         with open(self.FILE_PATH, 'rb') as dex_file:
@@ -124,18 +189,86 @@ class DexParser:
                         (dex_file_path))
 
             self.readMap(dex_file)
-
-        verb('DexParser\n', self.map)
+            self.readStrIds(dex_file)
+            self.readStrData(dex_file)
+            self.readTypeIds(dex_file)
+            self.readProtoIds(dex_file)
 
     # Parse DEX file map
     def readMap(self, dex_file):
 
+        verb('readMap', 'reading file map at %s' % (hex(self.header.map_off)) )
+
         dex_file.seek(self.header.map_off)              # Go to the file map
         size, = struct.unpack('I', dex_file.read(4))    # Parse # of elements in the DEX map
 
-        # return array of DexMapItem objects
-        self.map = [ DexMapItem(dex_file.read(12)) for i in range(size) ]
-        return self.map
+        # return array of DexMap objects
+        self.map = [ DexMap(dex_file.read(12)) for i in range(size) ]
+
+        verb('readMap', self.map)
+
+    # Parse string identifier list
+    def readStrIds(self, dex_file):
+
+        verb('readStrIds', 'reading file map at %s' %
+                (hex(self.header.string_ids_off)) )
+
+        dex_file.seek(self.header.string_ids_off)   # Go to string identifiers list
+
+        self.string_ids = [ DexStrId(dex_file.read(4)) for i in
+            range(self.header.string_ids_size) ]
+
+        verb('readStrIds', self.string_ids)
+
+    def readStrData(self, dex_file):
+
+        self.string_data = []
+
+        for sid in self.string_ids:
+            dex_file.seek(sid.offset)
+            self.string_data.append(DexStrData(dex_file))
+
+        verb('readStrData', self.string_data)
+
+    def readTypeIds(self, dex_file):
+
+        dex_file.seek(self.header.type_ids_off)
+
+        self.type_ids = [ DexTypeId(dex_file.read(4), self.string_data) for i in
+                range(self.header.type_ids_size) ]
+
+        verb('readTypeIds', self.type_ids)
+
+    def readProtoIds(self, dex_file):
+
+        dex_file.seek(self.header.proto_ids_off)
+
+        self.proto_ids = [ DexProtoId(dex_file.read(12), self.string_data,
+            self.type_ids) for i in range(self.header.proto_ids_size) ]
+
+        verb('readProtoIds', self.proto_ids)
+
+
+    # Method for parsing LEB128 integer values
+    # TODO deal with signed values
+    @staticmethod
+    def parseLeb128(dex_file, signed=False):
+
+        value = 0
+        shift = 0
+
+        while True:
+
+            byte, = struct.unpack('B', dex_file.read(1))    # Read byte
+            flag = (byte >> 7)      # Parse flag (most significant bit)
+            v = (byte & 0x7f)       # Parse payload (bottom 7 bits)
+            value += (v << shift)   # Add payload to value
+            shift += 7              # Increment shift for next 7-bit payload
+
+            if flag == 0:           # If flag is clear, this is the last byte
+                break
+
+        return value
 
 
 if __name__ == '__main__':
@@ -149,6 +282,4 @@ if __name__ == '__main__':
 
     dex_file = sys.argv[1]
     dex = DexParser(dex_file)
-
-    print(dir(dex.header))
 
