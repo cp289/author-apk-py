@@ -4,4 +4,5 @@
 #
 
 VERBOSE = False
+DEBUG = False
 

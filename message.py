@@ -25,3 +25,9 @@ def verb(who, msg):
 
     if settings.VERBOSE: print('%s: %s' % (who, msg))
 
+
+# Print debug message
+def debug(who, msg):
+
+    if settings.DEBUG: print('%s: %s' % (who, msg), file=sys.stderr)
+
