@@ -14,6 +14,7 @@
 
 from message import *
 import struct
+import math
 
 
 # Dex file magic constants
@@ -180,6 +181,8 @@ class DexProtoId:
     def loadParameters(self, dex_file, type_ids):
 
         if self.parameters_off != 0:
+            debug('loadProtoParams', 'reading proto. params \t@ %s' %
+                    (hex(self.parameters_off)))
             dex_file.seek(self.parameters_off)
             self.parameters = DexTypeList(dex_file, type_ids)
 
@@ -260,12 +263,12 @@ class DexEncodedMethod:
         return 'method: %s @%s' % (self.method_id, hex(self.code_off))
 
     # Load code_item
-    def loadCode(self, dex_file):
+    def loadCode(self, dex_file, type_ids):
 
         # If code offset is zero, the method is abstract or native
         if self.code_off != 0:
             dex_file.seek(self.code_off)
-            self.code = DexCode(dex_file)
+            self.code = DexCode(dex_file, type_ids)
 
 
 # Object for access_flags
@@ -298,7 +301,7 @@ class DexAccessFlags:
     # Represent object as hex string
     def __repr__(self):
 
-        return hex(self.FLAGS)
+        return 'AccessFlags:%s' % (hex(self.FLAGS))
 
 
 # Object for type_list
@@ -319,7 +322,7 @@ class DexTypeList:
 # Object for class_data_item
 class DexClassData:
 
-    def __init__(self, dex_file, field_ids, method_ids):
+    def __init__(self, dex_file, type_ids, field_ids, method_ids):
 
         self.static_fields_size = DexParser.parseLeb128(dex_file)
         self.instance_fields_size = DexParser.parseLeb128(dex_file)
@@ -340,10 +343,19 @@ class DexClassData:
         for i in range(self.direct_methods_size):
             self.direct_methods.append(DexEncodedMethod(dex_file, method_ids))
 
+        for i in range(self.virtual_methods_size):
+            self.virtual_methods.append(DexEncodedMethod(dex_file, method_ids))
+
+        for m in self.direct_methods:
+            m.loadCode(dex_file, type_ids)
+
+        for m in self.virtual_methods:
+            m.loadCode(dex_file, type_ids)
+
     # String representation
     def __repr__(self):
 
-        return 'ClassData: (%d,%d,%d,%d)' % (self.static_fields_size,
+        return 'ClassData:(%d,%d,%d,%d)' % (self.static_fields_size,
                 self.instance_fields_size, self.direct_methods_size,
                 self.virtual_methods_size)
 
@@ -376,7 +388,7 @@ class DexClassDef:
             self.superclass = None
 
         if self.source_file_idx != DexParser.NO_INDEX:
-            self.source_file = string_data[self.source_file_idx].data.decode()
+            self.source_file = string_data[self.source_file_idx].data
         else:
             self.source_file = None
 
@@ -405,20 +417,99 @@ class DexClassDef:
             self.interfaces = DexTypeList(dex_file, type_ids)
 
     # Load class_data_item
-    def loadClassData(self, dex_file, field_ids, method_ids):
+    def loadClassData(self, dex_file, type_ids, field_ids, method_ids):
 
         if self.class_data_off != 0:
             dex_file.seek(self.class_data_off)
-            self.class_data = DexClassData(dex_file, field_ids, method_ids)
+            self.class_data = DexClassData(dex_file, type_ids, field_ids, method_ids)
+
+
+# Object for try_item
+class DexTry:
+
+    def __init__(self, dex_file):
+
+        (
+            self.start_addr,
+            self.insn_count,
+            self.handler_off
+        ) = struct.unpack('IHH', dex_file.read(8))
+
+    # String representation
+    def __repr__(self):
+
+        return 'Try:byte[%d]@%s' % (self.insn_count, self.start_addr)
+
+
+# Object for encoded_type_addr_pair
+class DexHandler:
+
+    def __init__(self, dex_file, type_ids):
+
+        self.type_idx = DexParser.parseLeb128(dex_file)
+        self.type = type_ids[self.type_idx]
+        self.addr = DexParser.parseLeb128(dex_file)
+
+    # String representation
+    def __repr__(self):
+
+        return 'Handler:%s@%s' % (self.type, self.addr)
+
+
+# Object for encoded_catch_handler
+class DexCatchHandler:
+
+    def __init__(self, dex_file, type_ids):
+
+        self.size = DexParser.parseLeb128(dex_file, signed=True)
+        self.handlers = []
+        self.catch_all_addr = None
+
+        for i in range(abs(self.size)):
+            self.handlers.append(DexHandler(dex_file, type_ids))
+
+        if self.size <= 0:
+            self.catch_all_addr = DexParser.parseLeb128(dex_file)
+            self.CATCH_ALL = True
+
+    # String representation
+    def __repr__(self):
+
+        msg = 'w/catchAll' if self.CATCH_ALL else ''
+        return 'Catch:Handler[%d]%s' % (abs(self.size), msg)
 
 
 # Object for code_item
 class DexCode:
 
-    def __init__(self, dex_file):
+    def __init__(self, dex_file, type_ids):
 
-        # TODO finish
-        pass
+        (
+            self.registers_size,
+            self.ins_size,
+            self.outs_size,
+            self.tries_size,
+            self.debug_info_off,
+            self.insns_size
+        ) = struct.unpack('HHHHII', dex_file.read(16))
+
+        self.insns = struct.unpack('H'*self.insns_size,
+                dex_file.read(self.insns_size*2))
+
+        # Move to 4-byte aligned offset
+        dex_file.seek( (dex_file.tell() + 0x3) & ~0x3 )
+
+        self.tries = []
+        self.handlers = []
+
+        if self.tries_size != 0:
+            for i in range(self.tries_size):
+                self.tries.append(DexTry(dex_file))
+
+            handlers_size = DexParser.parseLeb128(dex_file)
+            for i in range(handlers_size):
+                self.handlers.append(DexCatchHandler(dex_file, type_ids))
+
 
 # Object to manage all DEX parsing operations/data
 class DexParser:
@@ -437,9 +528,12 @@ class DexParser:
             self.readStrData(dex_file)
             self.readTypeIds(dex_file)
             self.readProtoIds(dex_file)
+            self.readProtoParams(dex_file)
             self.readFieldIds(dex_file)
             self.readMethodIds(dex_file)
             self.readClassDefs(dex_file)
+            self.readInterfaces(dex_file)
+            self.readClassData(dex_file)
 
     # Parse DEX file header
     def readHeader(self, dex_file):
@@ -447,27 +541,27 @@ class DexParser:
 
         # Verify header magic and report DEX version
         if self.header.VALID:
-            verb('DexParser', 'found DEX v.%d header for %s' %
+            verb('readHeader', 'found DEX v.%d header for %s' %
                     (self.header.VERSION, self.FILE_PATH))
         else:
-            error('DexParser', 'invalid DEX header magic for %s' %
+            error('readHeader', 'invalid DEX header magic for %s' %
                     (self.FILE_PATH))
             return
 
         # Check file endianness
         if self.header.endian_tag == int('0x78563412', 16):
-            warn('DexParser', 'found reversed endian tag in %s' %
+            warn('readHeader', 'found reversed endian tag in %s' %
                     (dex_file_path))
-            error('DexParser', 'reversed endian parsing not implemented',
+            error('readHeader', 'reversed endian parsing not implemented',
                     fatal=True)
         elif self.header.endian_tag != int('0x12345678', 16):
-            error('DexParser', 'found invalid endian tag for %s' %
+            error('readHeader', 'found invalid endian tag for %s' %
                     (dex_file_path))
 
     # Parse DEX file map
     def readMap(self, dex_file):
 
-        verb('readMap', 'reading file map at %s' % (hex(self.header.map_off)) )
+        verb('readMap', 'reading file map \t\t@ %s' % (hex(self.header.map_off)) )
 
         dex_file.seek(self.header.map_off)              # Go to the file map
         size, = struct.unpack('I', dex_file.read(4))    # Parse # of elements in the DEX map
@@ -478,7 +572,7 @@ class DexParser:
     # Parse string identifier list
     def readStrIds(self, dex_file):
 
-        verb('readStrIds', 'reading file map at %s' %
+        verb('readStrIds', 'reading string ids \t\t@ %s' %
                 (hex(self.header.string_ids_off)) )
 
         dex_file.seek(self.header.string_ids_off)   # Go to string identifiers list
@@ -489,14 +583,19 @@ class DexParser:
     # Parse string data
     def readStrData(self, dex_file):
 
-        self.string_data = []
+        verb('readStrData', 'reading string data \t@ %s' %
+                (hex(self.string_ids[0].offset)))
 
+        self.string_data = []
         for sid in self.string_ids:
             dex_file.seek(sid.offset)
             self.string_data.append(DexStrData(dex_file))
 
     # Parse type ids
     def readTypeIds(self, dex_file):
+
+        verb('readTypeIds', 'reading type ids \t\t@ %s' %
+                (hex(self.header.type_ids_off)))
 
         dex_file.seek(self.header.type_ids_off)
 
@@ -506,16 +605,25 @@ class DexParser:
     # Parse prototype ids
     def readProtoIds(self, dex_file):
 
+        verb('readProtoIds', 'reading prototype ids \t@ %s' %
+                (hex(self.header.proto_ids_off)))
+
         dex_file.seek(self.header.proto_ids_off)
 
         self.proto_ids = [ DexProtoId(dex_file, self.string_data, self.type_ids)
                 for i in range(self.header.proto_ids_size) ]
+
+    # Parse prototype parameters
+    def readProtoParams(self, dex_file):
 
         for p in self.proto_ids:
             p.loadParameters(dex_file, self.type_ids)
 
     # Parse field ids
     def readFieldIds(self, dex_file):
+
+        verb('readFieldIds', 'reading field ids \t@ %s' %
+                (hex(self.header.field_ids_off)))
 
         dex_file.seek(self.header.field_ids_off)
 
@@ -525,37 +633,73 @@ class DexParser:
     # Parse method ids
     def readMethodIds(self, dex_file):
 
+        verb('readMethodIds', 'reading method ids \t@ %s' %
+                (hex(self.header.method_ids_off)))
+
         dex_file.seek(self.header.method_ids_off)
 
         self.method_ids = [ DexMethodId(dex_file, self.type_ids, self.proto_ids,
             self.string_data) for i in range(self.header.method_ids_size) ]
 
-        #debug('readMethodIds', self.method_ids)
-
     # Parse class definitions
     def readClassDefs(self, dex_file):
+
+        verb('readClassDefs', 'reading class defs \t@ %s' %
+                (hex(self.header.class_defs_off)))
 
         dex_file.seek(self.header.class_defs_off)
 
         self.class_defs = [ DexClassDef(dex_file, self.type_ids,
             self.string_data) for i in range(self.header.class_defs_size) ]
 
+    # Parse interfaces
+    def readInterfaces(self, dex_file):
+
         for c in self.class_defs:
-            c.loadInterfaces(dex_file, self.type_ids)
-            c.loadClassData(dex_file, self.field_ids, self.method_ids)
+            c.loadClassData(dex_file, self.type_ids, self.field_ids, self.method_ids)
+
+    # Parse class data
+    def readClassData(self, dex_file):
+
+        for c in self.class_defs:
+            c.loadClassData(dex_file, self.type_ids, self.field_ids, self.method_ids)
 
 
-    # Method for parsing LEB128 integer values
-    # TODO deal with signed values
+    # Method for parsing LEB128 integer values from files
     @staticmethod
     def parseLeb128(dex_file, signed=False):
+
+        byte_data = []
+
+        for i in range(5):  # NOTE LEB128 is at most 5 bytes in DEX format
+
+            byte, = struct.unpack('B', dex_file.read(1))    # Read byte
+            byte_data.append(byte)
+            flag = (byte >> 7)      # Parse flag (most significant bit)
+            if flag == 0:           # If flag is clear, this is the last byte
+                break
+
+        return DexParser.leb128(byte_data, signed)
+
+    # Parse LEB128 value from POSITIVE integer
+    @staticmethod
+    def numLeb128(num, signed=False):
+
+        n_bytes = math.ceil(num.bit_length()/8)
+        print(n_bytes)
+        byte_data = tuple(num.to_bytes(n_bytes, 'little'))
+        print(byte_data)
+        return DexParser.leb128(byte_data, signed)
+
+    # Parse LEB128 value from byte array
+    @staticmethod
+    def leb128(byte_data, signed=False):
 
         value = 0
         shift = 0
 
-        while True:
+        for byte in byte_data:
 
-            byte, = struct.unpack('B', dex_file.read(1))    # Read byte
             flag = (byte >> 7)      # Parse flag (most significant bit)
             v = (byte & 0x7f)       # Parse payload (bottom 7 bits)
             value += (v << shift)   # Add payload to value
@@ -564,15 +708,20 @@ class DexParser:
             if flag == 0:           # If flag is clear, this is the last byte
                 break
 
+        if signed and value >= (1 << (shift-1)):
+            value -= (1 << shift)
+
         return value
 
 
 if __name__ == '__main__':
 
     import sys
+    import settings
 
     settings.VERBOSE = True
     settings.DEBUG = True
+    settings.DEBUG_FILTER = ('loadProtoParams')
 
     if len(sys.argv) < 2:
         error(sys.argv[0], '%s <DEX file>' % (sys.argv[0]), fatal=True, pre='usage')
