@@ -20,13 +20,16 @@ class ApkAnalyzer:
 
         self.file = apk_file            # APK file path
         self.dir = apk_file + '.dec'    # extracted APK directory
-        self.n_grams = []               # Creates an array to store n-grams
+
+        self.n_grams = []               # Array to store n-grams
+        self.n_static_fields = 0        # Number of static fields
+        self.n_instance_fields = 0      # Number of static fields
+        self.n_direct_methods = 0       # Number of direct methods
+        self.n_virtual_methods = 0      # Number of virtual methods
+
         self.dex = None                 # DexParser object
 
         verb('__init__', 'Created ApkAnalyzer for %s' % (apk_file))
-
-
-    # Extract string data from res/values/strings.xml
 
 
     # Extract/decrypt APK file using `apktool`
@@ -56,13 +59,39 @@ class ApkAnalyzer:
         else:
             verb('extract', 'extraction completed successfuly')
 
+    # Load and parse DEX file
+    def loadDex(self):
+
+        self.dex = DexParser(os.path.join(self.dir, 'classes.dex'))
+
+    # Get number of direct/virtual methods, number of static/instance fields
+    def getClassFeatures(self):
+
+        for cls in self.dex.class_defs:
+            if cls.class_data is not None:
+                self.n_direct_methods += cls.class_data.direct_methods_size
+                self.n_virtual_methods += cls.class_data.virtual_methods_size
+                self.n_static_fields += cls.class_data.static_fields_size
+                self.n_instance_fields += cls.class_data.instance_fields_size
+        # TODO get interface data
 
     # Run entire analysis routine
     def run(self):
 
         self.extract()
         get_n_grams(self, 'res/values/strings.xml')
-        self.dex = DexParser(os.path.join(self.dir, 'classes.dex'))
+        self.loadDex()
+        self.getMethodsFeatures()
+
+    # Return feature vector
+    def featureVector(self):
+
+        return (
+            self.n_direct_methods,
+            self.n_virtual_methods,
+            self.n_static_fields,
+            self.n_instance_fields
+        )
 
 
 if __name__ == '__main__':
@@ -70,11 +99,16 @@ if __name__ == '__main__':
     import sys
 
     # TODO parse verbosity through argv
+
     settings.VERBOSE = True
+    settings.NAME = sys.argv[0]
 
     if len(sys.argv) < 2:
-        error(sys.argv[0], '%s <apkFileName>' % (sys.argv[0]), True, pre='usage')
+        error(settings.NAME, '%s <apkFileName>' % (sys.argv[0]), True, pre='usage')
 
     analyzer = ApkAnalyzer(sys.argv[1])
-    analyzer.run()
+    #analyzer.run()
+    analyzer.loadDex()
+    analyzer.getClassFeatures()
+    verb(settings.NAME, analyzer.featureVector())
 
