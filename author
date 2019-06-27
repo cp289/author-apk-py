@@ -9,6 +9,7 @@ from message import *
 import os
 import settings
 import subprocess
+from ngrams import *
 
 
 # Class for analyzing an APK file
@@ -26,35 +27,6 @@ class ApkAnalyzer:
 
 
     # Extract string data from res/values/strings.xml
-    def get_xml_strings(self):
-
-        strings_xml_path = os.path.join(self.dir, 'res/values/strings.xml')
-
-        verb('get_xml_strings', 'obtaining string features from %s' %
-                (strings_xml_path))
-
-        with open(strings_xml_path) as xml_file:
-            parser = BeautifulSoup(xml_file, features='lxml-xml')
-
-        # Pulls all <string> from strings.xml
-        strings = parser.findAll("string")
-
-        for phrase in strings:
-            phrase = phrase.text.lower()
-
-            tokens = [token for token in phrase.split(" ") if token != ""]
-
-            # If the string is less than 3 words, it stores the whole string in the array
-            if(len(tokens) < 3):
-                n_grams = zip(*[tokens[i:] for i in range(len(tokens))])
-                self.n_grams += n_grams
-                continue
-
-            # This creates each 3-gram of a string if it has at least 3 words
-            n_grams = zip(*[tokens[i:] for i in range(3)])
-            self.n_grams += n_grams
-
-        verb('get_xml_strings', 'obtained string features successfully')
 
 
     # Extract/decrypt APK file using `apktool`
@@ -89,7 +61,7 @@ class ApkAnalyzer:
     def run(self):
 
         self.extract()
-        self.get_xml_strings()
+        get_n_grams(self, 'res/values/strings.xml')
         self.dex = DexParser(os.path.join(self.dir, 'classes.dex'))
 
 
