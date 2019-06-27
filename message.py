@@ -29,5 +29,7 @@ def verb(who, msg):
 # Print debug message
 def debug(who, msg):
 
-    if settings.DEBUG: print('%s: %s' % (who, msg), file=sys.stderr)
+    if settings.DEBUG and who in settings.DEBUG_FILTER:
+        print('%s: %s' % (who, msg), file=sys.stderr)
+
 
