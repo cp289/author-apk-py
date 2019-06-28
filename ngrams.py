@@ -5,6 +5,8 @@ import message
 
 def get_n_grams(self, path):
 
+    dictionary = {}
+
     xml_path = os.path.join(self.dir, path)
 
     with open(xml_path) as xml_file:
@@ -19,4 +21,18 @@ def get_n_grams(self, path):
 
         n_grams = zip(*[encoded[i:] for i in range(3)])
 
+        all_n_grams = [" ".join(str(ngram) for ngram in n_grams)]
+
+        for ngram in all_ngrams:
+            get_occurance(dictionary, ngram)
+
         self.n_grams += n_grams
+
+
+def get_occurance(dictionary, temp):
+    if temp in dictionary:
+        dictionary[temp] += 1
+    else:
+        dictionary[temp] = 1
+
+    return dictionary
