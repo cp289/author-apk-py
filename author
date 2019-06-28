@@ -4,12 +4,13 @@
 #
 
 from bs4 import BeautifulSoup
+from data import FeatureVector
 from DexParser import DexParser
 from message import *
+from ngrams import *
 import os
 import settings
 import subprocess
-from ngrams import *
 
 
 # Class for analyzing an APK file
@@ -22,11 +23,7 @@ class ApkAnalyzer:
         self.dir = apk_file + '.dec'    # extracted APK directory
 
         self.n_grams = []               # Array to store n-grams
-        self.n_static_fields = 0        # Number of static fields
-        self.n_instance_fields = 0      # Number of static fields
-        self.n_direct_methods = 0       # Number of direct methods
-        self.n_virtual_methods = 0      # Number of virtual methods
-
+        self.vector = FeatureVector()   # Feature vector
         self.dex = None                 # DexParser object
 
         verb('__init__', 'Created ApkAnalyzer for %s' % (apk_file))
@@ -64,16 +61,46 @@ class ApkAnalyzer:
 
         self.dex = DexParser(os.path.join(self.dir, 'classes.dex'))
 
-    # Get number of direct/virtual methods, number of static/instance fields
+    # Get number of direct/virtual methods, static/instance fields, abstract methods
     def getClassFeatures(self):
 
         for cls in self.dex.class_defs:
             if cls.class_data is not None:
-                self.n_direct_methods += cls.class_data.direct_methods_size
-                self.n_virtual_methods += cls.class_data.virtual_methods_size
-                self.n_static_fields += cls.class_data.static_fields_size
-                self.n_instance_fields += cls.class_data.instance_fields_size
-        # TODO get interface data
+                self.vector.n_direct_methods += cls.class_data.direct_methods_size
+                self.vector.n_virtual_methods += cls.class_data.virtual_methods_size
+                self.vector.n_static_fields += cls.class_data.static_fields_size
+                self.vector.n_instance_fields += cls.class_data.instance_fields_size
+
+                # Direct methods
+                for m in cls.class_data.direct_methods:
+                    if m.code is None:
+                        # Get number of abstract direct methods
+                        self.vector.n_abstract_direct_methods += 1
+                    elif m.code.tries_size != 0:
+                        # Get number of methods with error handling
+                        self.vector.n_error_handling_methods += 1
+
+                # Virtual methods
+                for m in cls.class_data.virtual_methods:
+                    if m.code is None:
+                        # Get number of abstract virtual methods
+                        self.vector.n_abstract_virtual_methods += 1
+                    elif m.code.tries_size != 0:
+                        # Get number of methods with error handling
+                        self.vector.n_error_handling_methods += 1
+
+                # Static fields
+                for f in cls.class_data.static_fields:
+                    if f.access_flags.final:
+                        # Get number of final static fields
+                        self.vector.n_final_static_fields += 1
+
+                # Instance fields
+                for f in cls.class_data.instance_fields:
+                    if f.access_flags.final:
+                        # Get number of final instance fields
+                        self.vector.n_final_instance_fields += 1
+
 
     # Run entire analysis routine
     def run(self):
@@ -82,16 +109,6 @@ class ApkAnalyzer:
         get_n_grams(self, 'res/values/strings.xml')
         self.loadDex()
         self.getMethodsFeatures()
-
-    # Return feature vector
-    def featureVector(self):
-
-        return (
-            self.n_direct_methods,
-            self.n_virtual_methods,
-            self.n_static_fields,
-            self.n_instance_fields
-        )
 
 
 if __name__ == '__main__':
@@ -110,5 +127,5 @@ if __name__ == '__main__':
     #analyzer.run()
     analyzer.loadDex()
     analyzer.getClassFeatures()
-    verb(settings.NAME, analyzer.featureVector())
+    verb(settings.NAME, analyzer.vector)
 
