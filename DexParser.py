@@ -501,13 +501,14 @@ class DexCode:
 
         self.tries = []
         self.handlers = []
+        self.handlers_size = 0
 
         if self.tries_size != 0:
             for i in range(self.tries_size):
                 self.tries.append(DexTry(dex_file))
 
-            handlers_size = DexParser.parseLeb128(dex_file)
-            for i in range(handlers_size):
+            self.handlers_size = DexParser.parseLeb128(dex_file)
+            for i in range(self.handlers_size):
                 self.handlers.append(DexCatchHandler(dex_file, type_ids))
 
 
