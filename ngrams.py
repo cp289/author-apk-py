@@ -23,7 +23,7 @@ def get_n_grams(self, path):
 
         all_n_grams = [" ".join(str(ngram) for ngram in n_grams)]
 
-        for ngram in all_ngrams:
+        for ngram in all_n_grams:
             get_occurance(dictionary, ngram)
 
         self.n_grams += n_grams
