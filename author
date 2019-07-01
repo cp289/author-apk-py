@@ -3,6 +3,7 @@
 # author: Takes an APK as an input and constructs features for analysis
 #
 
+from CodeParser import CodeParser
 from bs4 import BeautifulSoup
 from data import FeatureVector
 from DexParser import DexParser
@@ -25,6 +26,7 @@ class ApkAnalyzer:
         self.n_grams = []               # Array to store n-grams
         self.vector = FeatureVector()   # Feature vector
         self.dex = None                 # DexParser object
+        self.code = []                  # Array of CodeParser objects
 
         verb('__init__', 'Created ApkAnalyzer for %s' % (apk_file))
 
@@ -79,6 +81,9 @@ class ApkAnalyzer:
                     elif m.code.tries_size != 0:
                         # Get number of methods with error handling
                         self.vector.n_error_handling_methods += 1
+                        # Parse bytecode
+                        self.code.append(CodeParser(m.code.insns,
+                            self.dex.header.VERSION))
 
                 # Virtual methods
                 for m in cls.class_data.virtual_methods:
@@ -88,6 +93,9 @@ class ApkAnalyzer:
                     elif m.code.tries_size != 0:
                         # Get number of methods with error handling
                         self.vector.n_error_handling_methods += 1
+                        # Parse bytecode
+                        self.code.append(CodeParser(m.code.insns,
+                            self.dex.header.VERSION))
 
                 # Static fields
                 for f in cls.class_data.static_fields:
@@ -101,6 +109,11 @@ class ApkAnalyzer:
                         # Get number of final instance fields
                         self.vector.n_final_instance_fields += 1
 
+    def getCodeFeatures(self):
+
+        for c in self.code:
+
+            debug('getCodeFeatures', c)
 
     # Run entire analysis routine
     def run(self):
@@ -108,7 +121,8 @@ class ApkAnalyzer:
         self.extract()
         get_n_grams(self, 'res/values/strings.xml')
         self.loadDex()
-        self.getMethodsFeatures()
+        self.getClassFeatures()
+        self.getCodeFeatures()
 
 
 if __name__ == '__main__':
