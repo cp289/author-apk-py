@@ -493,8 +493,7 @@ class DexCode:
             self.insns_size
         ) = struct.unpack('HHHHII', dex_file.read(16))
 
-        self.insns = struct.unpack('H'*self.insns_size,
-                dex_file.read(self.insns_size*2))
+        self.insns = dex_file.read(self.insns_size*2)
 
         # Move to 4-byte aligned offset
         dex_file.seek( (dex_file.tell() + 0x3) & ~0x3 )
