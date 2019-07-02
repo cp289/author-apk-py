@@ -3,30 +3,9 @@
 # data.py: library for data structures
 #
 
-class heapCounter(object):
-
-    # Simple object to store a data element and the number of occurrences
-    class item:
-        def __init__(self, data, num):
-            self.data = data
-            self.num = num
-
-    def __init__(self):
-
-        self.data = []
-
-    # Add element to heap
-    def push(self, item):
-
-        pass
-
-    # Pop element off of heap
-    def pop(self):
-
-        return None
 
 # Data type for feature vector
-class FeatureVector(object):
+class FeatureVector:
 
     def __init__(self):
 
@@ -36,9 +15,9 @@ class FeatureVector(object):
         self.n_instance_fields = 0          # Number of instance fields
         self.n_abstract_direct_methods = 0  # Number of abstract direct methods
         self.n_abstract_virtual_methods = 0 # Number of abstract virtual methods
-        self.n_error_handling_methods = 0   # Number of methods with error handling
         self.n_final_static_fields = 0      # Number of final static fields
         self.n_final_instance_fields = 0    # Number of final instance fields
+        self.n_error_handling_methods = 0   # Number of methods with error handling
 
         self.vector = None  # Numeric vector data
         self.dict = None    # Dictionary data
@@ -53,9 +32,9 @@ class FeatureVector(object):
             self.n_instance_fields,
             self.n_abstract_direct_methods,
             self.n_abstract_virtual_methods,
-            self.n_error_handling_methods,
             self.n_final_static_fields,
             self.n_final_instance_fields,
+            self.n_error_handling_methods,
         )
 
         return self.vector
