@@ -17,8 +17,12 @@ import subprocess
 # Class for analyzing an APK file
 class ApkAnalyzer:
 
-    # TODO check if apk_file exists
     def __init__(self, apk_file):
+
+        # Check if apk_file exists
+        if not os.path.exists(apk_file):
+            error('ApkAnalyzer', 'file not found: %s' % (apk_file))
+            return
 
         self.file = apk_file            # APK file path
         self.dir = apk_file + '.dec'    # extracted APK directory
@@ -28,7 +32,7 @@ class ApkAnalyzer:
         self.dex = None                 # DexParser object
         self.code = []                  # Array of CodeParser objects
 
-        verb('__init__', 'Created ApkAnalyzer for %s' % (apk_file))
+        verb('ApkAnalyzer', 'initialized %s' % (apk_file))
 
 
     # Extract/decrypt APK file using `apktool`
