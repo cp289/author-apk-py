@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# author: Takes an APK as an input and constructs features for analysis
+# ApkAnalyzer.py: Takes an APK as an input and constructs features for analysis
 #
 
 from CodeParser import CodeParser
