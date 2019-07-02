@@ -27,16 +27,19 @@ class ApkAnalyzer:
         self.file = apk_file            # APK file path
         self.dir = apk_file + '.dec'    # extracted APK directory
 
+        # Check whether extraction directory exists
+        self.dir_exists = os.path.exists(self.dir)
+        if self.dir_exists:
+            verb('ApkAnalyzer', 'found extraction directory %s' % (self.dir))
+
+
         self.n_grams = []               # Array to store n-grams
         self.vector = FeatureVector()   # Feature vector
         self.dex = None                 # DexParser object
         self.code = []                  # Array of CodeParser objects
 
-        verb('ApkAnalyzer', 'initialized %s' % (apk_file))
-
 
     # Extract/decrypt APK file using `apktool`
-    # TODO detect presence and build paths to important files, e.g. classes.dex
     def extract(self):
 
         # This is the command that extracts the APK file
@@ -122,7 +125,7 @@ class ApkAnalyzer:
     # Run entire analysis routine
     def run(self):
 
-        self.extract()
+        if not self.dir_exists: self.extract()
         get_n_grams(self, 'res/values/strings.xml')
         self.loadDex()
         self.getClassFeatures()
