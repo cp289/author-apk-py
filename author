@@ -1,0 +1,54 @@
+#!/usr/bin/python3
+#
+# author: front-end for author-apk
+#
+
+from ApkAnalyzer import ApkAnalyzer
+from message import *
+import os
+
+
+# Object for
+class Main:
+
+    def __init__(self, directory):
+
+        self.directory = directory
+        self.apks = []
+    
+    # Enumerate all APK files
+    def enumApks(self):
+
+        for base, dirs, files in os.walk(self.directory):
+            # Restrict to .apk extension
+            files = [f for f in files if os.path.splitext(f)[1] == '.apk']
+            for f in files:
+                self.apks.append(ApkAnalyzer(os.path.join(base,f)))
+
+        self.n_apks = len(self.apks)
+
+    # Run author-apk
+    def run(self):
+
+        self.enumApks()
+
+        for apk in self.apks:
+            apk.run() 
+
+
+if __name__ == '__main__':
+
+    import settings
+    import sys
+
+    # TODO parse verbosity through argv
+
+    settings.VERBOSE = True
+    settings.NAME = sys.argv[0]
+
+    if len(sys.argv) < 2:
+        error(settings.NAME, '%s <apkDirectory>' % (sys.argv[0]), True, pre='usage')
+
+    main = Main(sys.argv[1])
+    main.run()
+
