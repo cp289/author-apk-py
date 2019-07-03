@@ -32,8 +32,7 @@ class ApkAnalyzer:
         if self.dir_exists:
             verb('ApkAnalyzer', 'found extraction directory %s' % (self.dir))
 
-
-        self.n_grams = []               # Array to store n-grams
+        self.ngrams = {}
         self.vector = FeatureVector()   # Feature vector
         self.dex = None                 # DexParser object
         self.code = []                  # Array of CodeParser objects
@@ -122,12 +121,33 @@ class ApkAnalyzer:
 
             debug('getCodeFeatures', c)
 
+
+    def getNgramFeatures(self, path="res/values/strings.xml"):
+
+        path = os.path.join(self.dir, path)
+
+        if not os.path.exists(path):
+            error('get_n_grams', 'Path does not exist')
+
+        with open(path) as xml_file:
+            parser = BeautifulSoup(xml_file, features="lxml-xml")
+
+        strings = parser.findAll("string")
+
+        for i in range(len(strings)):
+            strings[i] = bytes(strings[i].text, encoding='utf-8')
+
+        self.ngrams = get_n_grams(strings)
+
+        verb('getNgramFeatures', 'Successfully created ngrams')
+
+
     # Run entire analysis routine
     def run(self):
 
         if not self.dir_exists: self.extract()
-        get_n_grams(self, 'res/values/strings.xml')
         self.loadDex()
+        self.getNgramFeatures()
         self.getClassFeatures()
         self.getCodeFeatures()
 
