@@ -15,6 +15,7 @@ class Main:
 
         self.directory = directory
         self.apks = []
+        self.totalNgrams = {}           # Aggregate dictionary of all ngrams
     
     # Enumerate all APK files
     def enumApks(self):
@@ -27,13 +28,27 @@ class Main:
 
         self.n_apks = len(self.apks)
 
+
+    def getTotalNgramFeatures(self):
+        for apk in self.apks:
+            for key in apk.ngrams:
+                if key not in self.totalNgrams:
+                    self.totalNgrams[key] = apk.ngrams[key]
+                else:
+                    self.totalNgrams[key] += apk.ngrams[key]
+
+
     # Run author-apk
     def run(self):
 
         self.enumApks()
 
         for apk in self.apks:
-            apk.run() 
+            apk.run()
+
+        self.getTotalNgramFeatures()
+
+        print(self.totalNgrams)
 
 
 if __name__ == '__main__':

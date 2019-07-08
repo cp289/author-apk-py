@@ -32,7 +32,7 @@ class ApkAnalyzer:
         if self.dir_exists:
             verb('ApkAnalyzer', 'found extraction directory %s' % (self.dir))
 
-        self.ngrams = {}
+        self.ngrams = {}                # Contains all the ngrams found in the apk
         self.vector = FeatureVector()   # Feature vector
         self.dex = None                 # DexParser object
         self.code = []                  # Array of CodeParser objects
