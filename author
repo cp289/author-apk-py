@@ -48,8 +48,6 @@ class Main:
 
         self.getTotalNgramFeatures()
 
-        print(self.totalNgrams)
-
 
 if __name__ == '__main__':
 
@@ -59,6 +57,8 @@ if __name__ == '__main__':
     # TODO parse verbosity through argv
 
     settings.VERBOSE = True
+    settings.DEBUG = True
+    settings.DEBUG_FILTER = ('CodeParser',)
     settings.NAME = sys.argv[0]
 
     if len(sys.argv) < 2:

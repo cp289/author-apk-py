@@ -24,18 +24,30 @@ class Instruction:
 class CodeParser:
 
     def __init__(self, bytecode, dex_version):
-
-        # Only generate unused instruction handlers in debug mode
-        if settings.DEBUG: self._gen_unused()
-
         self.dex_version = dex_version
-        self.bytecode = bytecode
-        self.insns = struct.unpack('H'*(len(self.bytecode)//2), self.bytecode)
+        # Convert bytecode to large int
+        self.intcode = int.from_bytes(bytecode, byteorder='little')
+        self.insns = []
+
+        i = 0
+        while i < self.intcode.bit_length():
+            ins = CodeFormat.Instruction(self.intcode, i)
+            if ins.name == 'UNUSED':
+                error('    ', 'Previous instruction: %s' %
+                        (format(self.insns[-1])))
+                error('    ', 'Code section bit size: %s' %
+                        (hex(self.intcode.bit_length())))
+            self.insns.append(ins)
+
+            ilen = ins.idx - i
+            if ilen & 0xf != 0:
+                error('CodeParser', 'bad instruction length: %s' % (hex(ilen)))
+                error('CodeParser', 'bad instruction: %s' % (format(ins)))
+
+            i = ins.idx
 
     def __repr__(self):
-
         return str(self.insns)
-
 
 if __name__ == '__main__':
 
@@ -43,10 +55,13 @@ if __name__ == '__main__':
 
     settings.VERBOSE = True
     settings.DEBUG = True
+    #settings.DEBUG_FILTER = ('CodeParser',)
 
     if len(sys.argv) < 2:
         error(sys.argv[0], '%s <Code file>' % (sys.argv[0]), fatal=True, pre='usage')
 
-    code_file = sys.argv[1]
-    code = CodeParser(dex_file)
+    with open(sys.argv[1], 'rb') as code_file:
+        bytecode = code_file.read()
+
+    code = CodeParser(bytecode, 39)
 

@@ -116,9 +116,7 @@ class ApkAnalyzer:
                         self.vector.n_final_instance_fields += 1
 
     def getCodeFeatures(self):
-
         for c in self.code:
-
             debug('getCodeFeatures', c)
 
 
@@ -141,6 +139,20 @@ class ApkAnalyzer:
 
         verb('getNgramFeatures', 'Successfully created ngrams')
 
+    # Debug
+    def _debug(self):
+        for cls in self.dex.class_defs:
+            if cls.class_data is not None:
+                # Direct methods
+                for m in cls.class_data.direct_methods[0:1]:
+                    if m.code is not None:
+                        verb('debug', 'code:%s' % (hex(m.code_off)))
+
+                # Virtual methods
+                for m in cls.class_data.virtual_methods[0:1]:
+                    if m.code is not None:
+                        verb('debug', 'code:%s' % (hex(m.code_off)))
+        verb('debug', self.dex.map)
 
     # Run entire analysis routine
     def run(self):
@@ -148,6 +160,7 @@ class ApkAnalyzer:
         if not self.dir_exists: self.extract()
         self.loadDex()
         self.getNgramFeatures()
+        #self._debug()
         self.getClassFeatures()
         self.getCodeFeatures()
 
