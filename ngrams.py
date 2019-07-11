@@ -3,16 +3,13 @@ import os
 import settings
 from message import *
 
-def get_n_grams(strings):
+def get_n_grams(strings, n=3):
 
     dictionary = {}
 
     for string in strings:
-
-        n_grams = zip(*[string[i:] for i in range(3)])
-
-        for n_gram in n_grams:
-            get_occurance(dictionary, n_gram)
+        for i in range(len(string)-n):
+            get_occurance(dictionary, string[i:i+n])
 
     return dictionary
 
