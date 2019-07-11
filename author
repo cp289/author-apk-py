@@ -4,6 +4,8 @@
 #
 
 from ApkAnalyzer import ApkAnalyzer
+import data
+import math
 from message import *
 import os
 
@@ -15,7 +17,7 @@ class Main:
 
         self.directory = directory
         self.apks = []
-        self.totalNgrams = {}           # Aggregate dictionary of all ngrams
+        self.n_apks = 0
     
     # Enumerate all APK files
     def enumApks(self):
@@ -29,14 +31,29 @@ class Main:
         self.n_apks = len(self.apks)
 
 
-    def getTotalNgramFeatures(self):
-        for apk in self.apks:
-            for key in apk.ngrams:
-                if key not in self.totalNgrams:
-                    self.totalNgrams[key] = apk.ngrams[key]
-                else:
-                    self.totalNgrams[key] += apk.ngrams[key]
+    # Calculate Tf-Idf features
+    def getTfidfFeatures(self):
 
+        ngram_docs = {}
+
+        # Calculate parts of TF-IDF values (overwrites occurrences in apk.ngrams)
+        for apk in self.apks:
+            total = sum(apk.ngrams.values())
+            for ngram in apk.ngrams:
+                # Compute TF term for ngram
+                apk.ngrams[ngram] /= total
+                # Compute number of documents with ngram in it
+                if ngram in ngram_docs:
+                    ngram_docs[ngram] += 1
+                else:
+                    ngram_docs[ngram] = 1
+        
+        # Calculate IDFs (overwrites TFs in apk.ngrams)
+        log_total_docs = math.log(self.n_apks)
+        for apk in self.apks:
+            for ngram in apk.ngrams:
+                apk.ngrams[ngram] *= log_total_docs - math.log(ngram_docs[ngram])
+            apk.getTfidfFeatures()
 
     # Run author-apk
     def run(self):
@@ -46,7 +63,7 @@ class Main:
         for apk in self.apks:
             apk.run()
 
-        self.getTotalNgramFeatures()
+        self.getTfidfFeatures()
 
 
 if __name__ == '__main__':
@@ -59,11 +76,11 @@ if __name__ == '__main__':
     settings.VERBOSE = True
     settings.DEBUG = True
     settings.DEBUG_FILTER = ('CodeParser',)
-    settings.NAME = sys.argv[0]
 
     if len(sys.argv) < 2:
-        error(settings.NAME, '%s <apkDirectory>' % (sys.argv[0]), True, pre='usage')
+        error(settings.NAME, '%s <apkDirectory>' % (settings.NAME), True, pre='usage')
 
     main = Main(sys.argv[1])
     main.run()
+    verb(settings.NAME, '\n'.join([format(i.vector) for i in main.apks]))
 

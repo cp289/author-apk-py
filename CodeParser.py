@@ -47,7 +47,7 @@ class CodeParser:
             i = ins.idx
 
     def __repr__(self):
-        return str(self.insns)
+        return format(self.insns)
 
 if __name__ == '__main__':
 
