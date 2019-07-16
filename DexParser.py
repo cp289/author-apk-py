@@ -516,24 +516,38 @@ class DexParser:
 
     NO_INDEX = int('0xffffffff', 16)
 
+    header = None
+    map = []
+    string_ids = []
+    string_data = []
+    type_ids = []
+    proto_ids = []
+    field_ids = []
+    method_ids = []
+    class_defs = []
+
     def __init__(self, dex_file_path):
 
         self.FILE_PATH = dex_file_path
 
-        with open(self.FILE_PATH, 'rb') as dex_file:
+        try:
+            with open(self.FILE_PATH, 'rb') as dex_file:
 
-            self.readHeader(dex_file)
-            self.readMap(dex_file)
-            self.readStrIds(dex_file)
-            self.readStrData(dex_file)
-            self.readTypeIds(dex_file)
-            self.readProtoIds(dex_file)
-            self.readProtoParams(dex_file)
-            self.readFieldIds(dex_file)
-            self.readMethodIds(dex_file)
-            self.readClassDefs(dex_file)
-            self.readInterfaces(dex_file)
-            self.readClassData(dex_file)
+                self.readHeader(dex_file)
+                self.readMap(dex_file)
+                self.readStrIds(dex_file)
+                self.readStrData(dex_file)
+                self.readTypeIds(dex_file)
+                self.readProtoIds(dex_file)
+                self.readProtoParams(dex_file)
+                self.readFieldIds(dex_file)
+                self.readMethodIds(dex_file)
+                self.readClassDefs(dex_file)
+                self.readInterfaces(dex_file)
+                self.readClassData(dex_file)
+
+        except FileNotFoundError:
+            error('DexParser', '%s does not exist' % (self.FILE_PATH))
 
     # Parse DEX file header
     def readHeader(self, dex_file):

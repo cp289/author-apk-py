@@ -36,7 +36,7 @@ class CodeParser:
                 error('    ', 'Previous instruction: %s' %
                         (format(self.insns[-1])))
                 error('    ', 'Code section bit size: %s' %
-                        (hex(self.intcode.bit_length())))
+                        (hex( (self.intcode.bit_length() + 0x7) & (~0x7) )))
             self.insns.append(ins)
 
             ilen = ins.idx - i

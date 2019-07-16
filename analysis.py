@@ -1,16 +1,19 @@
 #!/usr/bin/python3
 #
-# ApkAnalyzer.py: Takes an APK as an input and constructs features for analysis
+# analysis.py: feature extraction from apk files
 #
 
 from CodeParser import CodeParser
 from bs4 import BeautifulSoup
 import data
 from DexParser import DexParser
+import math
 from message import *
+from multiprocessing import Pool
 from ngrams import *
 import os
 import settings
+import shutil
 import subprocess
 
 IMMEDIATE_LITERAL_TYPES = ("Const4", "Const16", "Const", "ConstHigh16",
@@ -40,10 +43,12 @@ BINARY_OPERATOR_TYPES = ( "AddInt", "SubInt", "MulInt", "DivInt", "RemInt",
     "DivIntLit8", "RemIntLit8", "AndIntLit8", "OrIntLit8", "XorIntLit8",
     "ShlIntLit8", "ShrIntLit8", "UshrIntLit8")
 
-# Class for analyzing an APK file
+# Class for analyzing an APK file (does not perform TF-IDF analysis)
 class ApkAnalyzer:
 
     def __init__(self, apk_file):
+
+        self.finished = False
 
         # Check if apk_file exists
         if not os.path.exists(apk_file):
@@ -52,11 +57,6 @@ class ApkAnalyzer:
 
         self.file = apk_file            # APK file path
         self.dir = apk_file + '.dec'    # extracted APK directory
-
-        # Check whether extraction directory exists
-        self.dir_exists = os.path.exists(self.dir)
-        if self.dir_exists:
-            verb('ApkAnalyzer', 'found extraction directory %s' % (self.dir))
 
         self.ngrams = {}                # Contains all the ngrams found in the apk
         self.vector = data.FeatureVector()  # Feature vector
@@ -71,25 +71,31 @@ class ApkAnalyzer:
         # This is the command that extracts the APK file
         # Flags:
         #   d   This instructs apktool to decode an APK file
+        #  -f   This deletes the destination directory if it exists
         #  -s   This prevents apktool from generating source code from classes.dex
         #  -o   This precedes the desired name of the output directory
-        cmd = 'apktool d -s -o %s %s' % (self.dir, self.file)
+        cmd = 'apktool d -f -s -o %s %s' % (self.dir, self.file)
 
         verb('extract', 'extracting %s to %s ...' % (self.file, self.dir))
 
         # Fork command
-        proc = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE)
+        with subprocess.Popen(cmd.split(), stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE) as proc:
 
-        # Wait for command completion
-        proc.wait()
+            # Wait for command completion
+            proc.wait()
 
-        # If the process exited with errors, print its output
-        if proc.returncode != 0:
-            error('extract', 'encountered errors for %s' % (self.file))
-            error('extract', '\n%s' % (proc.stderr.read().decode()) )
-        else:
-            verb('extract', 'extraction completed successfuly')
+            # If the process exited with errors, print its output
+            if proc.returncode != 0:
+                error('extract', 'encountered errors for %s' % (self.file))
+                error('extract', '\n%s' % (proc.stderr.read().decode()) )
+            else:
+                verb('extract', 'extraction completed successfuly')
+    
+    # Remove extracted directory
+    def remove(self):
+        verb('remove', 'delete extracted directory %s' % (self.dir))
+        shutil.rmtree(self.dir, ignore_errors=True)
 
     # Load and parse DEX file
     def loadDex(self):
@@ -99,6 +105,7 @@ class ApkAnalyzer:
     # Get number of direct/virtual methods, static/instance fields, abstract methods
     def getClassFeatures(self):
 
+        verb('getClassFeatures', 'Extracting class features...')
         for cls in self.dex.class_defs:
             if cls.class_data is not None:
                 self.vector.n_direct_methods += cls.class_data.direct_methods_size
@@ -163,7 +170,8 @@ class ApkAnalyzer:
         path = os.path.join(self.dir, path)
 
         if not os.path.exists(path):
-            error('get_n_grams', 'Path does not exist')
+            error('get_n_grams', 'Path %s does not exist' % (path))
+            return
 
         with open(path) as xml_file:
             parser = BeautifulSoup(xml_file, features="lxml-xml")
@@ -179,7 +187,8 @@ class ApkAnalyzer:
         # Next parse ngrams from code sections
         data.updateOccurrences(self.ngrams, get_n_grams(self.bytecode))
 
-        verb('getNgramFeatures', 'Successfully created ngrams')
+        verb('getNgramFeatures', 'Successfully extracted %d ngrams' %
+                (len(self.ngrams)))
 
     # Add top_n ngrams to the feature vector sorted by TF-IDFs in self.ngrams
     def getTfidfFeatures(self, top_n=5):
@@ -188,8 +197,8 @@ class ApkAnalyzer:
         verb('getTfidfFeatures', ngrams_sorted[:top_n])
 
         # Store top 5 ngrams each as a number
-        self.vector.top_ngrams = tuple(int.from_bytes(ngrams_sorted[i],
-            'little') for i in range(top_n))
+        self.vector.top_ngrams = (int.from_bytes(ngrams_sorted[i], 'little') for
+                i in range(top_n))
 
     # Debug
     def _debug(self):
@@ -206,15 +215,99 @@ class ApkAnalyzer:
                         verb('debug', 'code:%s' % (hex(m.code_off)))
         verb('debug', self.dex.map)
 
+    # Remove references to bulky objects to allow garbage collection
+    def clean(self):
+        del self.dex
+        del self.bytecode
+        del self.code
+
     # Run entire analysis routine
     def run(self):
 
-        if not self.dir_exists: self.extract()
-        self.loadDex()
-        #self._debug()
-        self.getClassFeatures()
-        self.getNgramFeatures()
-        self.getCodeFeatures()
+        try:
+            self.extract()
+            self.loadDex()
+            self.getClassFeatures()
+            self.getNgramFeatures()
+            self.getCodeFeatures()
+            self.clean()
+            self.finished = True
+        finally:
+            self.remove()
+        return self
+
+
+# Object for parsing/labeling a set of Apks (performs TF-IDF analysis)
+class ApkSet:
+
+    def __init__(self, directory, exclude=set()):
+
+        self.directory = directory
+        self.apks = []
+        self.n_apks = 0
+        self.exclude = exclude
+    
+    # Enumerate all APK files
+    def enumApks(self):
+
+        for base, dirs, files in os.walk(self.directory):
+            # Restrict to .apk extension
+            files = [f for f in files if os.path.splitext(f)[1] == '.apk' and
+                    os.path.join(base, f) not in self.exclude]
+            for f in files:
+                self.apks.append(ApkAnalyzer(os.path.join(base,f)))
+
+        self.n_apks = len(self.apks)
+
+
+    # Calculate Tf-Idf features
+    def getTfidfFeatures(self):
+
+        ngram_docs = {}
+
+        # Calculate parts of TF-IDF values (overwrites occurrences in apk.ngrams)
+        for apk in self.apks:
+            total = sum(apk.ngrams.values())
+            for ngram in apk.ngrams:
+                # Compute TF term for ngram
+                apk.ngrams[ngram] /= total
+                # Compute number of documents with ngram in it
+                if ngram in ngram_docs:
+                    ngram_docs[ngram] += 1
+                else:
+                    ngram_docs[ngram] = 1
+
+        # Calculate IDFs (overwrites TFs in apk.ngrams)
+        log_total_docs = math.log(self.n_apks)
+        for apk in self.apks:
+            for ngram in apk.ngrams:
+                apk.ngrams[ngram] *= log_total_docs - math.log(ngram_docs[ngram])
+            apk.getTfidfFeatures()
+
+    # Can't use a lambda since it breaks multiprocessing
+    def _run(self, apk):
+        return apk.run()
+
+    # Run author-apk
+    def run(self):
+
+        self.enumApks()
+
+        if settings.PARALLEL:
+            new_apks = []
+            try:
+                with Pool(settings.N_THREADS) as pool:
+                    itr = pool.imap_unordered(self._run, self.apks)
+                    for i in itr:
+                        new_apks.append(i)
+            finally:
+                self.apks = new_apks
+        else:
+            for apk in self.apks:
+                apk.run()
+
+        if self.n_apks > 0:
+            self.getTfidfFeatures()
 
 
 if __name__ == '__main__':
@@ -224,14 +317,13 @@ if __name__ == '__main__':
     # TODO parse verbosity through argv
 
     settings.VERBOSE = True
-    settings.NAME = sys.argv[0]
+    settings.DEBUG = True
+    settings.DEBUG_FILTER = ('CodeParser',)
 
     if len(sys.argv) < 2:
-        error(settings.NAME, '%s <apkFileName>' % (sys.argv[0]), True, pre='usage')
+        error(settings.NAME, '%s <apkDirectories...>' % (settings.NAME), True, pre='usage')
 
-    analyzer = ApkAnalyzer(sys.argv[1])
-    analyzer.run()
-    verb(settings.NAME, analyzer.vector.get())
-    verb(settings.NAME, analyzer.ngrams_xml)
-    verb(settings.NAME, analyzer.ngrams_code)
+    aset = ApkSet(*sys.argv[1:])
+    aset.run()
+    verb(settings.NAME, '\n'.join([format(i.vector) for i in main.apks]))
 

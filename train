@@ -1,0 +1,110 @@
+#!/usr/bin/python3
+#
+# train: Parse training set and train SVM classifier
+#
+
+from analysis import ApkSet
+import csv
+import data
+from message import *
+import os
+import settings
+
+FEATURES_CSV = 'features.csv'
+HEADER = (*data.FeatureVector.labels, 'class', 'filename')
+
+# Enumerate APK files and write out data to CSVs
+def enumFiles(directory, id_csv='dir_id.csv', apk_csv='apk_class.csv'):
+    verb('train', 'Enumerating APK directories...')
+
+    apks = []
+    dirs = set()
+    for base, directories, files in os.walk(directory):
+        for f in files:
+            if not os.path.splitext(f)[1] == '.apk': continue
+            apks.append(os.path.join(base, f))
+            dirs.add(base)
+
+    # Generate directory ids (for classification)
+    dirid = {name:did for did,name in enumerate(dirs)}
+
+    # Write directory id CSV file
+    with open(id_csv, 'w') as f:
+        header = ['directory', 'id']
+        w = csv.writer(f)
+        w.writerow(header)
+        for name in dirid:
+            w.writerow( (name, dirid[name]) )
+
+    # Generate apk classes (directory ids)
+    apk_class = {apk:dirid[os.path.split(apk)[0]] for apk in apks}
+
+    # Write APK class file to training set
+    with open(apk_csv, 'w') as f:
+        header = ['apk_file', 'class']
+        w = csv.writer(f)
+        w.writerow(header)
+        for apk in apks:
+            # Assign classes (directory ids) to apks
+            w.writerow( (apk, apk_class[apk]) )
+
+    return apk_class
+
+# Read features from CSV file (for cacheing purposes)
+def readFeatures(features_csv):
+    verb('readFeatures', 'Reading features from %s' % (features_csv))
+    with open(features_csv, 'r') as f:
+        r = csv.DictReader(f)
+        return list(r)
+
+# Store features to CSV file
+def writeFeatures(data, header, features_csv):
+    verb('writeFeatures', 'Writing features to %s' % (features_csv))
+    with open(features_csv, 'w') as f:
+        w = csv.DictWriter(f, header)
+        w.writeheader()
+        for d in data:
+            w.writerow(d)
+
+# Train the classifier
+def train(dirname):
+    if os.path.exists(FEATURES_CSV):
+        features = readFeatures(FEATURES_CSV)
+    else:
+        features = []
+    apk_class = enumFiles(dirname)
+    apkset = ApkSet(dirname, exclude={f['filename'] for f in features})
+    try:
+        apkset.run()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        verb('train', 'Saving program state...')
+        new_features = []
+        for apk in apkset.apks:
+            if apk.finished:
+                row = apk.vector.getLabeled()
+                row['class'] = apk_class[apk.file]
+                row['filename'] = apk.file
+                new_features.append(row)
+
+        features += new_features
+        writeFeatures(features, HEADER, FEATURES_CSV)
+
+if __name__ == '__main__':
+
+    import sys
+
+    settings.VERBOSE = True
+
+    if len(sys.argv) < 2:
+        error(settings.NAME, '%s <apkDirectory>' % (settings.NAME), fatal=True,
+                pre='usage')
+
+    directory = os.path.split(sys.argv[1])[0]
+
+    train(directory)
+
+    #apk_sets = [ApkSet(sys.argv[i]) for i in range(1,len(sys.argv))]
+    #for a in apk_sets: a.run()
+

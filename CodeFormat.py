@@ -29,12 +29,20 @@ class Format:
         if self.var_length:
             var_arg = parseBits(intcode, idx + self.var_off, self.var_bits)
             debug('Format', 'var_arg: %s' % (hex(var_arg)))
-            self.sub_formats = self.var_formats[var_arg]
+            try:
+                if self.var_formats[var_arg] is None:
+                    self.sub_formats = self.var_formats[-1]
+                else:
+                    self.sub_formats = self.var_formats[var_arg]
+            except IndexError:
+                error(self._str, 'invalid variable-length instruction arg: %d' %
+                        (var_arg))
+                self.sub_formats = self.var_formats[-1]
 
         self.value = parseBits(intcode, idx, self.size)
 
     def __repr__(self):
-        return '%s:%d' % (self._str, self.value)
+        return '%s:%s' % (self._str, hex(self.value))
 
 # Object for unused formats
 class Funused(Format):
@@ -463,7 +471,7 @@ ins_format = {
     0xdb : F22b,
     0xdc : F22b,
     0xdd : F22b,
-    0xd3 : F22b,
+    0xde : F22b,
     0xdf : F22b,
     0xe0 : F22b,
     0xe1 : F22b,
@@ -691,7 +699,7 @@ ins_name = {
     0xdb : "DivIntLit8",
     0xdc : "RemIntLit8",
     0xdd : "AndIntLit8",
-    0xd3 : "OrIntLit8",
+    0xde : "OrIntLit8",
     0xdf : "XorIntLit8",
     0xe0 : "ShlIntLit8",
     0xe1 : "ShrIntLit8",
